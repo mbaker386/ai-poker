@@ -1,17 +1,20 @@
 # AI Poker
 
-A performance prop for card magic: a sleek dark-casino web app that plays the
-role of a card-reading AI. The spectator sees an elegant machine that studies
-four cards and names a hidden fifth. The performer sees nothing on screen that
-betrays the method.
+A card-magic web app, styled as a dark-casino "AI," that reads four cards you
+enter and names a fifth. It is operated one-handed and shows nothing on screen
+that reveals how it works.
 
-> **Note.** This README, and the source code, necessarily describe the method.
-> If this repository is public, anyone can read it. The deployed app itself
-> shows nothing.
+> **Scope of this document.** This README explains how to *operate* the app —
+> the encoding you enter, the stacks, the setup screen. It deliberately does
+> **not** teach how to *present* it: the premise, scripting, spectator
+> management, and how the pieces combine into a routine are left to the
+> performer (and to Matt Baker's lectures and forthcoming book). The source
+> code necessarily contains the decoding logic; the deployed app reveals
+> nothing.
 
 ---
 
-## Performing
+## Operating the app
 
 ### The screen
 
@@ -19,12 +22,12 @@ Ranks A–K, suits ♣ ♥ ♠ ♦, an optional **JOKER** button, backspace, **C
 (asks twice), and a gold **Reveal** button that lights when four entries are in.
 Cards can be entered rank-then-suit or suit-then-rank, one-handed.
 
-After **Reveal**, the machine names a card. Tap **Correct** to continue to a
-fresh group, or **No** for the machine's charming self-correction ("I'm sorry,
-I got distracted by a hilarious meme on Instagram…"), which names the stored
-second candidate. The excuses rotate: Instagram → TikTok → YouTube → repeat.
-If a reveal has no second candidate, **No** instead asks for the group to be
-re-entered — in character, blaming its own hearing.
+After **Reveal**, the app names a card and offers **Correct** and **No**.
+**Correct** clears the group for the next one. **No** is for the cases where a
+group has two possible answers: it shows the stored second candidate (with a
+short apology message; the app rotates through a few of these). When a group
+has only one possible answer, **No** instead asks for the four entries to be
+re-entered.
 
 ### How each group is read
 
@@ -33,18 +36,17 @@ order:
 
 1. **Joker emergency.** A group containing one Joker plus three cards entered
    in ascending stack order names a King: the Joker's slot (1–4) gives the
-   suit in CHaSeD order (♣ ♥ ♠ ♦). Any other Joker arrangement is rejected in
-   character.
+   suit in CHaSeD order (♣ ♥ ♠ ♦). Any other Joker arrangement is rejected.
 2. **Force reveal.** If the four cards are four of the five in any line of the
    force list, the answer is the fifth card of that line. Default force list:
    `AC 4H 7S 10D KC`.
 3. **Block reveal.** If the four cards occupy four of five *cyclically
-   consecutive* positions in the active stack — either four straight cards, or
-   four with a single interior gap — the answer is the missing card. Best
-   practice: have the spectator remove one of the **middle three** of five
-   consecutive cards, which makes the answer unique. If they take an end card
-   (four straight cards remain), the machine picks between predecessor and
-   successor by a parity rule; press **No** to flip to the other.
+   consecutive* positions in the active stack, the answer is the missing card.
+   Two sub-cases: with the gap in the interior (four cards straddling one empty
+   position), the missing card is unique; when the four are themselves
+   consecutive (the gap is at an end), there are two possibilities —
+   predecessor or successor — and the app picks one by a parity rule, with
+   **No** flipping to the other.
 4. **Coded reveal.** Otherwise the entry *order* of the four cards encodes
    the hole card (see below).
 
@@ -66,11 +68,10 @@ position = 1). Enter them in the order that encodes the target:
   | high      | low       | 5 / J   |
   | high      | mid       | 6 / Q   |
 
-- The machine chooses between the two pair-mates by a spacing heuristic on
-  stack positions (the candidate that fills the largest gap among the four
-  visible cards more evenly wins). When spectators draw from five different
-  parts of a spread, this guess is right more often than not; when it's wrong,
-  **No** delivers the correction bit.
+- A coded group yields *two* candidate cards (a pair). The app displays one of
+  them, chosen by a spacing heuristic on stack positions — it prefers the
+  candidate whose position fills the largest gap among the four visible cards
+  most evenly — and stores the other. **No** reveals the stored one.
 - **Kings** are reached by the Simple King Rule: to name a King, encode a card
   that is *already visible on the table*; the machine then substitutes the
   King whose CHaSeD index matches that card's label (label 1 → K♣, 2 → K♥,
@@ -100,13 +101,13 @@ All settings persist on the device (`localStorage`) and survive reloads.
 Because iOS can evict a long-unused web app's storage, keep a backup code
 somewhere safe.
 
-### Rejections stay in character
+### Rejections never reveal the method
 
-Malformed input — duplicates, an impossible Joker arrangement — is refused
-with lines like "I may have misread that unusual card," never with anything
-that hints at stacks, order, or method. If the app ever hits an internal
-error, it shows a calm "Let me reset the display" screen with a Restart
-button rather than going blank.
+Malformed input — duplicate cards, an impossible Joker arrangement — is refused
+with a neutral message (e.g. "I may have misread that unusual card"), never
+with anything that mentions stacks, order, positions, or method. If the app
+ever hits an internal error, it shows a "Let me reset the display" screen with
+a Restart button rather than going blank.
 
 ---
 
