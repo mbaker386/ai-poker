@@ -2,11 +2,12 @@
 //
 // Each entered group of four self-classifies:
 //   - contains a Joker            -> joker emergency (positional King)
+//   - three distinct + one repeat -> repeat-King method (color + minor/major)
 //   - 4-subset of a force config  -> force reveal (the fifth card)
 //   - 4 of 5 consecutive in stack -> block reveal (the missing card)
 //   - otherwise                   -> coded reveal (permutation + King rule)
 
-import { FULL_DECK, type Card, type Entry } from "./stacks";
+import { FULL_DECK, SUIT_SEQ, type Card, type Entry, type Suit, type SuitOrder } from "./stacks";
 
 const RANK_NAME: Record<string, string> = {
   A: "Ace", "2": "Two", "3": "Three", "4": "Four", "5": "Five", "6": "Six",
@@ -29,8 +30,10 @@ export const isRed = (suit: string): boolean => suit === "H" || suit === "D";
 export const positionMap = (stack: Card[]): Map<Card, number> =>
   new Map(stack.map((c, i) => [c, i + 1]));
 
-const SUIT_BY_FIRST_LABEL: Record<number, string> = { 1: "C", 2: "H", 3: "S", 4: "D" };
-const KING_BY_LABEL: Record<number, Card> = { 1: "KC", 2: "KH", 3: "KS", 4: "KD" };
+// The coded suit encoding follows the selected suit order: label k -> the k-th
+// suit of that order. CHaSeD: 1=C,2=H,3=S,4=D. SHoCkeD: 1=S,2=H,3=C,4=D.
+const suitByLabel = (order: SuitOrder, label: number): Suit => SUIT_SEQ[order][label - 1];
+const kingByLabel = (order: SuitOrder, label: number): Card => `K${SUIT_SEQ[order][label - 1]}` as Card;
 const VALUE_PAIRS: [string, string][][] = [
   [["A", "7"], ["2", "8"]],
   [["3", "9"], ["4", "10"]],
@@ -45,9 +48,9 @@ export const permutationOf = (entered: Card[], sortedVisible: Card[]): number[] 
   return entered.map((c) => lbl.get(c) ?? 0);
 };
 
-export function decodeOrdinaryCandidates(perm: number[]): [Card, Card] {
+export function decodeOrdinaryCandidates(perm: number[], suitOrder: SuitOrder): [Card, Card] {
   const first = perm[0];
-  const suit = SUIT_BY_FIRST_LABEL[first];
+  const suit = suitByLabel(suitOrder, first);
   const rem3 = [1, 2, 3, 4].filter((x) => x !== first);
   const row = rem3.indexOf(perm[1]);
   const rem2 = rem3.filter((x) => x !== perm[1]);
@@ -56,13 +59,13 @@ export function decodeOrdinaryCandidates(perm: number[]): [Card, Card] {
   return [`${a}${suit}` as Card, `${b}${suit}` as Card];
 }
 
-export function applySimpleKingRule(ordinary: Card[], sortedVisible: Card[]): Card[] {
+export function applySimpleKingRule(ordinary: Card[], sortedVisible: Card[], suitOrder: SuitOrder): Card[] {
   const vis = new Set(sortedVisible);
   const lbl = new Map(sortedVisible.map((c, i) => [c, i + 1]));
   const out: Card[] = [];
   for (const cand of ordinary) {
     if (!vis.has(cand)) { out.push(cand); continue; }
-    const king = KING_BY_LABEL[lbl.get(cand)!];
+    const king = kingByLabel(suitOrder, lbl.get(cand)!);
     if (!vis.has(king)) out.push(king);
   }
   return [...new Set(out)];
@@ -97,14 +100,45 @@ export function chooseWithSpacing(
   return { answer, alternate };
 }
 
-function decodeJokerEmergency(entries: Entry[], pos: Map<Card, number>): { king: Card; slot: number } {
+function decodeJokerEmergency(
+  entries: Entry[], pos: Map<Card, number>, suitOrder: SuitOrder,
+): { king: Card; slot: number } {
   const jIdx = entries.map((e, i) => (e === "JOKER" ? i : -1)).filter((i) => i >= 0);
   if (jIdx.length !== 1) throw new Error("count");
   const reals = entries.filter((e): e is Card => e !== "JOKER");
   if (new Set(reals).size !== 3) throw new Error("distinct");
   const rp = reals.map((c) => pos.get(c)!);
   if (!rp.every((p, i) => i === 0 || rp[i - 1] < p)) throw new Error("not-ascending");
-  return { king: KING_BY_LABEL[jIdx[0] + 1], slot: jIdx[0] + 1 };
+  return { king: kingByLabel(suitOrder, jIdx[0] + 1), slot: jIdx[0] + 1 };
+}
+
+// Repeat-King method: three distinct cards (one repeated as the fourth entry).
+// The ENTRY ORDER of the three distinct cards names a King, independent of the
+// suit-order setting:
+//   - 1st card = lowest stack position (A) -> black; middle (B) -> red; (C unused)
+//   - of the remaining two (by position), the lower -> minor suit, higher -> major
+//   - black: minor = Clubs, major = Spades ; red: minor = Diamonds, major = Hearts
+export function decodeRepeatKing(reals: Card[], pos: Map<Card, number>): EvalResult {
+  const seen = new Set<Card>();
+  const order: Card[] = [];
+  for (const c of reals) { if (!seen.has(c)) { seen.add(c); order.push(c); } }
+  if (order.length !== 3) return { ok: false, error: "invalid" };
+  const sorted = [...order].sort((a, b) => pos.get(a)! - pos.get(b)!); // [A, B, C]
+  const e1 = order[0], e2 = order[1];
+
+  let color: "black" | "red";
+  if (e1 === sorted[0]) color = "black";
+  else if (e1 === sorted[1]) color = "red";
+  else return { ok: false, error: "invalid" }; // first card was the highest — not a valid code
+
+  const remaining = sorted.filter((c) => c !== e1); // two cards, position-sorted
+  let rank: "minor" | "major";
+  if (e2 === remaining[0]) rank = "minor";
+  else if (e2 === remaining[1]) rank = "major";
+  else return { ok: false, error: "invalid" };
+
+  const suit: Suit = color === "black" ? (rank === "minor" ? "C" : "S") : (rank === "minor" ? "D" : "H");
+  return { ok: true, answer: `K${suit}` as Card, alternate: null, mode: "repeat-king", diag: { color, rankClass: rank } };
 }
 
 export const cyclicPosition = (p: number): number => (((p - 1) % 52) + 52) % 52 + 1;
@@ -167,7 +201,7 @@ export function checkForce(cards: Card[], forceConfigs: Card[][]): { answer: Car
   return { answer: uniq[0], alternate: uniq[1] ?? null };
 }
 
-export type Mode = "ordinary" | "joker" | "block" | "force";
+export type Mode = "ordinary" | "joker" | "block" | "force" | "repeat-king";
 
 export interface EvalDiag {
   slot?: number;
@@ -176,13 +210,44 @@ export interface EvalDiag {
   permutation?: number[];
   ordinary?: Card[];
   finals?: Card[];
+  color?: "black" | "red";
+  rankClass?: "minor" | "major";
 }
 
 export type EvalResult =
   | { ok: true; answer: Card; alternate: Card | null; mode: Mode; diag?: EvalDiag }
   | { ok: false; error: "invalid" | "joker-order" };
 
-export function evaluateGroup(entries: Entry[], stack: Card[], forceConfigs: Card[][]): EvalResult {
+// Total order on cards used by the double-tap feature: by rank (A low … K high),
+// then by suit (C, H, S, D). "Lower"/"higher of the two possibilities" use this.
+const RANK_VALUE: Record<string, number> = {
+  A: 1, "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7,
+  "8": 8, "9": 9, "10": 10, J: 11, Q: 12, K: 13,
+};
+const SUIT_VALUE: Record<string, number> = { C: 0, H: 1, S: 2, D: 3 };
+export function cardLess(a: Card, b: Card): boolean {
+  const pa = parseCard(a), pb = parseCard(b);
+  if (RANK_VALUE[pa.rank] !== RANK_VALUE[pb.rank]) return RANK_VALUE[pa.rank] < RANK_VALUE[pb.rank];
+  return SUIT_VALUE[pa.suit] < SUIT_VALUE[pb.suit];
+}
+
+export type SelectMode = "low" | "high";
+
+// When the double-tap feature is active, the estimation heuristic is bypassed:
+// a single tap ("low") reveals the lower of the two candidates, a double tap
+// ("high") the higher. Single-candidate results are unaffected.
+function finalize(result: EvalResult, select?: SelectMode): EvalResult {
+  if (!select || !result.ok || result.alternate == null) return result;
+  const lo = cardLess(result.answer, result.alternate) ? result.answer : result.alternate;
+  const hi = result.answer === lo ? result.alternate : result.answer;
+  const answer = select === "low" ? lo : hi;
+  return { ...result, answer, alternate: answer === lo ? hi : lo };
+}
+
+export function evaluateGroup(
+  entries: Entry[], stack: Card[], forceConfigs: Card[][],
+  select?: SelectMode, suitOrder: SuitOrder = "chased",
+): EvalResult {
   const pos = positionMap(stack);
   const deckSet = new Set(stack);
   const hasJoker = entries.includes("JOKER");
@@ -195,18 +260,23 @@ export function evaluateGroup(entries: Entry[], stack: Card[], forceConfigs: Car
     if (entries.filter((e) => e === "JOKER").length !== 1 || new Set(reals).size !== 3)
       return { ok: false, error: "invalid" };
     try {
-      const { king, slot } = decodeJokerEmergency(entries, pos);
+      const { king, slot } = decodeJokerEmergency(entries, pos, suitOrder);
       return { ok: true, answer: king, alternate: null, mode: "joker", diag: { slot } };
     } catch (e) {
       return { ok: false, error: (e as Error).message === "not-ascending" ? "joker-order" : "invalid" };
     }
   }
 
-  if (new Set(reals).size !== 4) return { ok: false, error: "invalid" };
+  // Repeat-King method: four entries, three distinct (one repeated). Always
+  // available, regardless of the Joker toggle.
+  const distinctReals = new Set(reals).size;
+  if (distinctReals === 3) return decodeRepeatKing(reals, pos);
+
+  if (distinctReals !== 4) return { ok: false, error: "invalid" };
 
   // --- Phase 3 auto-detection: force list first, then stack block ---
   const force = checkForce(reals, forceConfigs);
-  if (force) return { ok: true, ...force, mode: "force" };
+  if (force) return finalize({ ok: true, ...force, mode: "force" }, select);
 
   const inputPos = reals.map((c) => pos.get(c)!);
   const exact = findExactBlocks(inputPos);
@@ -214,30 +284,30 @@ export function evaluateGroup(entries: Entry[], stack: Card[], forceConfigs: Car
     const answer = stack[exact[0].missingPos - 1];
     const ranked = rankedBlockCandidates(inputPos, stack);
     const alternate = ranked.find((c) => c !== answer) ?? null;
-    return { ok: true, answer, alternate, mode: "block", diag: { detail: "exact" } };
+    return finalize({ ok: true, answer, alternate, mode: "block", diag: { detail: "exact" } }, select);
   }
   if (exact.length >= 2) {
     const cands = exact.map((e) => stack[e.missingPos - 1]);
     const byPos = [...cands].sort((a, b) => pos.get(a)! - pos.get(b)!);
     const total = inputPos.reduce((s, p) => s + p, 0) + 3;
     const answer = total % 2 === 0 ? byPos[0] : byPos[1];
-    return {
+    return finalize({
       ok: true, answer,
       alternate: answer === byPos[0] ? byPos[1] : byPos[0],
       mode: "block", diag: { detail: "ends" },
-    };
+    }, select);
   }
 
   // --- Coded (Phase 1/2) permutation decode ---
   const sortedVisible = labelVisible(reals, pos);
   const permutation = permutationOf(reals, sortedVisible);
-  const ordinary = decodeOrdinaryCandidates(permutation);
-  const finals = applySimpleKingRule(ordinary, sortedVisible);
+  const ordinary = decodeOrdinaryCandidates(permutation, suitOrder);
+  const finals = applySimpleKingRule(ordinary, sortedVisible, suitOrder);
   if (finals.length === 0) return { ok: false, error: "invalid" };
   const diag: EvalDiag = { sortedVisible, permutation, ordinary, finals };
   if (finals.length === 1) return { ok: true, answer: finals[0], alternate: null, mode: "ordinary", diag };
   const { answer, alternate } = chooseWithSpacing(finals, reals, pos, 1);
-  return { ok: true, answer, alternate, mode: "ordinary", diag };
+  return finalize({ ok: true, answer, alternate, mode: "ordinary", diag }, select);
 }
 
 /* ---------------- parsing for setup screens ---------------- */

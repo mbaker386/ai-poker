@@ -6,7 +6,9 @@
 // device or share it with another performer.
 
 import { parseForceText, parseStackText, forceTextFrom } from "./logic";
-import { DEFAULT_FORCE, STACKS, type Card } from "./stacks";
+import { DEFAULT_FORCE, STACKS, type Card, type SuitOrder } from "./stacks";
+
+export type { SuitOrder };
 
 export interface Settings {
   stackId: string;               // one of STACKS ids, or "custom"
@@ -14,6 +16,8 @@ export interface Settings {
   customName: string;
   forceConfigs: Card[][];
   jokerEnabled: boolean;
+  doubleTap: boolean;            // single tap = lower candidate, double tap = higher
+  suitOrder: SuitOrder;          // suit-button order AND the coded suit encoding
   diagnostics: boolean;
 }
 
@@ -23,6 +27,8 @@ export const DEFAULT_SETTINGS: Settings = {
   customName: "Custom stack",
   forceConfigs: DEFAULT_FORCE,
   jokerEnabled: true,
+  doubleTap: false,
+  suitOrder: "chased",
   diagnostics: false,
 };
 
@@ -60,6 +66,8 @@ export function sanitizeSettings(raw: unknown): Settings {
     if ("configs" in parsed) s.forceConfigs = parsed.configs;
   }
   if (typeof o.jokerEnabled === "boolean") s.jokerEnabled = o.jokerEnabled;
+  if (typeof o.doubleTap === "boolean") s.doubleTap = o.doubleTap;
+  if (o.suitOrder === "chased" || o.suitOrder === "shocked") s.suitOrder = o.suitOrder;
   if (typeof o.diagnostics === "boolean") s.diagnostics = o.diagnostics;
   return s;
 }
@@ -111,6 +119,8 @@ export function encodeSettings(s: Settings): string {
     c: s.customStack ? s.customStack.join(" ") : null,
     f: forceTextFrom(s.forceConfigs),
     j: s.jokerEnabled,
+    t: s.doubleTap,
+    o: s.suitOrder,
   };
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
   return CODE_PREFIX + toBase64Url(bytes);
@@ -147,6 +157,8 @@ export function decodeSettings(code: string): { settings: Settings } | { error: 
     customName: payload.n,
     forceConfigs,
     jokerEnabled: payload.j,
+    doubleTap: payload.t,
+    suitOrder: payload.o,
   });
   return { settings };
 }

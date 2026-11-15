@@ -36,18 +36,24 @@ order:
 
 1. **Joker emergency.** A group containing one Joker plus three cards entered
    in ascending stack order names a King: the Joker's slot (1–4) gives the
-   suit in CHaSeD order (♣ ♥ ♠ ♦). Any other Joker arrangement is rejected.
-2. **Force reveal.** If the four cards are four of the five in any line of the
-   force list, the answer is the fifth card of that line. Default force list:
-   `AC 4H 7S 10D KC`.
-3. **Block reveal.** If the four cards occupy four of five *cyclically
+   suit in the active suit order (CHaSeD ♣ ♥ ♠ ♦, or SHoCkeD ♠ ♥ ♣ ♦). Any
+   other Joker arrangement is rejected.
+2. **Repeat-King.** A group of four with only *three* distinct cards — one
+   card repeated as the fourth entry — names a King via the three cards' entry
+   order (see "Encoding a King without the Joker" below). Always available,
+   whether or not the Joker key is shown.
+3. **Force reveal.** If the four cards are four of the five in any line of the
+   force list, the answer is the fifth card of that line. The force list is
+   editable; the shipped default has four lines (`AC 4H 7S 10D KC`,
+   `JS KC 5C 2H 9S`, `10H 10D 2S 2C 7D`, `KH KD JC JS 2S`).
+4. **Block reveal.** If the four cards occupy four of five *cyclically
    consecutive* positions in the active stack, the answer is the missing card.
    Two sub-cases: with the gap in the interior (four cards straddling one empty
    position), the missing card is unique; when the four are themselves
    consecutive (the gap is at an end), there are two possibilities —
    predecessor or successor — and the app picks one by a parity rule, with
    **No** flipping to the other.
-4. **Coded reveal.** Otherwise the entry *order* of the four cards encodes
+5. **Coded reveal.** Otherwise the entry *order* of the four cards encodes
    the hole card (see below).
 
 ### The coded order (Phase 1/2)
@@ -55,7 +61,9 @@ order:
 Sort the four visible cards by stack position; call them 1, 2, 3, 4 (lowest
 position = 1). Enter them in the order that encodes the target:
 
-- **First entry** = suit, in CHaSeD order: label 1 → ♣, 2 → ♥, 3 → ♠, 4 → ♦.
+- **First entry** = suit, in the active suit order: label 1 → ♣, 2 → ♥, 3 → ♠,
+  4 → ♦ in CHaSeD; label 1 → ♠, 2 → ♥, 3 → ♣, 4 → ♦ in SHoCkeD (the **Suit
+  order** setting swaps ♣ and ♠; ♥ and ♦ are unchanged).
 - **Second and third entries** select a rank pair from the remaining three
   labels (in increasing label order, `low/mid/high` = the three unused labels):
 
@@ -68,34 +76,65 @@ position = 1). Enter them in the order that encodes the target:
   | high      | low       | 5 / J   |
   | high      | mid       | 6 / Q   |
 
-- A coded group yields *two* candidate cards (a pair). The app displays one of
-  them, chosen by a spacing heuristic on stack positions — it prefers the
-  candidate whose position fills the largest gap among the four visible cards
-  most evenly — and stores the other. **No** reveals the stored one.
+- A coded group yields *two* candidate cards (a pair). By default the app
+  displays one of them, chosen by a spacing heuristic on stack positions — it
+  prefers the candidate whose position fills the largest gap among the four
+  visible cards most evenly — and stores the other; **No** reveals the stored
+  one. With **Double-tap Reveal** enabled (setup screen), the heuristic is
+  bypassed: one tap of **Reveal** shows the lower of the two candidates (by
+  rank, then suit), a double tap shows the higher, and the other is stored for
+  **No**.
 - **Kings** are reached by the Simple King Rule: to name a King, encode a card
   that is *already visible on the table*; the machine then substitutes the
-  King whose CHaSeD index matches that card's label (label 1 → K♣, 2 → K♥,
-  3 → K♠, 4 → K♦). If exactly one of the two decoded pair-mates is visible,
+  King whose suit-order index matches that card's label (CHaSeD: 1 → K♣, 2 →
+  K♥, 3 → K♠, 4 → K♦). If exactly one of the two decoded pair-mates is visible,
   the answer is unique and **No** asks for re-entry.
+
+### Encoding a King without the Joker
+
+An alternative way to name a King that needs no Joker key. Discard one of the
+four cards (the spectator may pick which), leaving **three**. Label the three
+1-2-3 by stack position, then enter them in this order:
+
+- **First entry** sets the colour: enter card **1** for a **black** King, card
+  **2** for a **red** King. (Never enter card 3 first.)
+- **Second entry** sets minor vs. major within that colour. Of the two cards
+  that remain, renumber them 1-2 by stack position: enter the lower for a
+  **minor** suit, the higher for a **major** suit. Minor = ♣ (black) or ♦
+  (red); major = ♠ (black) or ♥ (red).
+- **Third entry** is the last remaining card.
+- **Fourth entry**: repeat any one of the three cards. This repeat is what
+  tells the app to use this method; which card is repeated carries no meaning.
+
+So the four Kings are the four orders `1·2·3 → K♣`, `1·3·2 → K♠`,
+`2·1·3 → K♦`, `2·3·1 → K♥` (then a repeat). This is independent of the CHaSeD/
+SHoCkeD setting, and is available whether or not the Joker key is shown.
 
 ### The secret setup screen
 
 Tap **A three times in a row** (no suit in between). Entering a real Ace
 (A then a suit) never triggers it. Inside:
 
-- **Reference stack** — Aronson (default), Mnemonica, Particle,
-  Numerical-CHaSeD (A♣ A♥ A♠ A♦ 2♣ … K♠ K♦), or a pasted custom stack.
-  Selection takes effect immediately; **Close** is enough.
+- **Reference stack** — Aronson (default), Mnemonica, Particle, Si Stebbins
+  (A♣ 4♥ 7♠ 10♦ K♣ 3♥ …, +3 and CHaSeD), Numerical-CHaSeD
+  (A♣ A♥ A♠ A♦ 2♣ … K♠ K♦), or a pasted custom stack. Selection takes effect
+  immediately; **Close** is enough.
 - **Custom stack** — paste 52 cards in compact notation (`AS, KH, 10D, 2C …`
   or `TD` for ten), any separators. Validated as a true permutation.
 - **Force list** — one five-card configuration per line, editable, clearable.
 - **Backup** — copy a code capturing your stack, force list, and settings;
   paste a code to restore or to clone another performer's setup. Codes look
   like `AIP1.eyJ2IjoxLCJz…`.
-- **Joker button** on/off, **rehearsal diagnostics** (a clearly-labeled panel
-  showing the detected mode and decode — never enable in performance),
-  **Reset performance** (clears the current group and restarts the correction
-  rotation), and **Run self-tests**.
+- **Joker button** on/off — the **JOKER** key sits on the keypad to the right
+  of **K** (under the 9 and 10); turning it off removes it entirely.
+- **Double-tap Reveal** on/off — see the coded-order note above.
+- **Suit order** — CHaSeD (default, ♣ ♥ ♠ ♦) or SHoCkeD (♠ ♥ ♣ ♦). This sets
+  **both** the order of the suit keys and the coded suit encoding (the first-
+  entry → suit map, the King rule, and the Joker slot all follow it). The
+  repeat-King method above is unaffected.
+- **Rehearsal diagnostics** (a clearly-labeled panel showing the detected mode
+  and decode — never enable in performance), **Reset performance** (clears the
+  current group and restarts the correction rotation), and **Run self-tests**.
 
 All settings persist on the device (`localStorage`) and survive reloads.
 Because iOS can evict a long-unused web app's storage, keep a backup code

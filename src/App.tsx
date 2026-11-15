@@ -12,6 +12,12 @@ import { version as APP_VERSION } from "../package.json";
 
 const SUIT_SYMBOL: Record<string, string> = { C: "♣", H: "♥", S: "♠", D: "♦" };
 
+// Display order of the suit buttons only; the encoding is always CHaSeD.
+const SUIT_ORDERS: Record<string, readonly string[]> = {
+  chased: ["C", "H", "S", "D"],
+  shocked: ["S", "H", "C", "D"],
+};
+
 const NO_SCRIPTS = [
   "I’m sorry, I got distracted by a hilarious meme on Instagram. Your hole card is actually the",
   "I’m sorry, I got distracted by a cat video on TikTok. Your hole card is actually the",
@@ -29,6 +35,7 @@ const MODE_LABEL: Record<string, string> = {
   joker: "Phase 1/2 · joker emergency",
   block: "Phase 3 · stack block",
   force: "Phase 3 · force list",
+  "repeat-king": "King · three-card repeat",
 };
 
 type Phase = "collecting" | "reveal" | "correction" | "reenter";
@@ -45,6 +52,8 @@ function AIPokerApp() {
   const [customName, setCustomName] = useState(init.customName);
   const [forceConfigs, setForceConfigs] = useState<Card[][]>(init.forceConfigs);
   const [jokerEnabled, setJokerEnabled] = useState(init.jokerEnabled);
+  const [doubleTap, setDoubleTap] = useState(init.doubleTap);
+  const [suitOrder, setSuitOrder] = useState(init.suitOrder);
   const [diagnostics, setDiagnostics] = useState(init.diagnostics);
 
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -70,6 +79,7 @@ function AIPokerApp() {
   const clearTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const msgTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noteTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null); // double-tap window
   const aaaCount = useRef(0); // consecutive bare-A taps for the hidden setup gesture
 
   const builtIn = STACKS.find((s) => s.id === stackId);
@@ -77,12 +87,12 @@ function AIPokerApp() {
   const activeStackName = builtIn ? builtIn.name : customName;
 
   const currentSettings = (): Settings =>
-    ({ stackId, customStack, customName, forceConfigs, jokerEnabled, diagnostics });
+    ({ stackId, customStack, customName, forceConfigs, jokerEnabled, doubleTap, suitOrder, diagnostics });
 
   // Persist settings whenever they change.
   useEffect(() => {
-    saveSettings({ stackId, customStack, customName, forceConfigs, jokerEnabled, diagnostics });
-  }, [stackId, customStack, customName, forceConfigs, jokerEnabled, diagnostics]);
+    saveSettings({ stackId, customStack, customName, forceConfigs, jokerEnabled, doubleTap, suitOrder, diagnostics });
+  }, [stackId, customStack, customName, forceConfigs, jokerEnabled, doubleTap, suitOrder, diagnostics]);
 
   const flash = useCallback((text: string) => {
     setMessage(text);
@@ -97,7 +107,7 @@ function AIPokerApp() {
   }, []);
 
   useEffect(() => () => {
-    [clearTimer, msgTimer, noteTimer].forEach((r) => { if (r.current) clearTimeout(r.current); });
+    [clearTimer, msgTimer, noteTimer, revealTimer].forEach((r) => { if (r.current) clearTimeout(r.current); });
   }, []);
 
   const slotsFull = entries.length >= 4;
@@ -108,8 +118,13 @@ function AIPokerApp() {
     setEntries((prev) => {
       if (prev.length >= 4) return prev;
       if (card !== "JOKER" && prev.includes(card)) {
-        flash(`${formatFull(card as Card)} is already in. Backspace to change it.`);
-        return prev;
+        // Allow one repeat as the fourth entry (the repeat-King method): three
+        // distinct real cards already down, and this duplicates one of them.
+        const fourthRepeat = prev.length === 3 && new Set(prev).size === 3 && !prev.includes("JOKER");
+        if (!fourthRepeat) {
+          flash(`${formatFull(card as Card)} is already in. Backspace to change it.`);
+          return prev;
+        }
       }
       return [...prev, card];
     });
@@ -166,15 +181,31 @@ function AIPokerApp() {
   };
 
   const revealValid = entries.length === 4;
-  const doReveal = () => {
+  const doReveal = (select?: "low" | "high") => {
     aaaCount.current = 0;
-    const r = evaluateGroup(entries, activeStack, forceConfigs);
+    const r = evaluateGroup(entries, activeStack, forceConfigs, select, suitOrder);
     if (!r.ok) {
       flash(r.error === "joker-order" ? NO_ALT.joker : INVALID_MSG);
       setEntries([]); setPending(NO_PENDING);
       return;
     }
     setResult(r); setPhase("reveal");
+  };
+  // Double-tap feature: one tap reveals the lower candidate, two the higher.
+  // When off, a tap reveals immediately with the estimation heuristic.
+  const onRevealTap = () => {
+    if (phase !== "collecting" || !revealValid) return;
+    if (!doubleTap) { doReveal(); return; }
+    if (revealTimer.current) {
+      clearTimeout(revealTimer.current);
+      revealTimer.current = null;
+      doReveal("high");
+    } else {
+      revealTimer.current = setTimeout(() => {
+        revealTimer.current = null;
+        doReveal("low");
+      }, 280);
+    }
   };
   const nextGroup = () => {
     setEntries([]); setPending(NO_PENDING); setResult(null); setPhase("collecting");
@@ -226,6 +257,8 @@ function AIPokerApp() {
     setCustomName(s.customName);
     setForceConfigs(s.forceConfigs);
     setJokerEnabled(s.jokerEnabled);
+    setDoubleTap(s.doubleTap);
+    setSuitOrder(s.suitOrder);
     setCustomDraft(s.customStack?.join(" ") ?? "");
     setForceDraft(forceTextFrom(s.forceConfigs));
     setImportError(null); setImportDraft("");
@@ -234,8 +267,8 @@ function AIPokerApp() {
 
   const liveEval = useMemo<EvalResult | null>(() => {
     if (entries.length !== 4) return null;
-    return evaluateGroup(entries, activeStack, forceConfigs);
-  }, [entries, activeStack, forceConfigs]);
+    return evaluateGroup(entries, activeStack, forceConfigs, undefined, suitOrder);
+  }, [entries, activeStack, forceConfigs, suitOrder]);
 
   /* ---------------- render ---------------- */
 
@@ -292,19 +325,18 @@ function AIPokerApp() {
             <button key={r} className="aip-key rank" onClick={() => handleRank(r)}
               disabled={phase !== "collecting" || slotsFull}>{r}</button>
           ))}
+          {jokerEnabled && (
+            <button key="JOKER" className="aip-key joker-rank" onClick={handleJoker}
+              disabled={phase !== "collecting" || slotsFull}>JOKER</button>
+          )}
         </div>
 
         <div className="aip-suits">
-          {SUITS.map((s) => (
+          {(SUIT_ORDERS[suitOrder] ?? SUITS).map((s) => (
             <button key={s} className={"aip-key suit" + (isRed(s) ? " red" : "")}
               onClick={() => handleSuit(s)}>{SUIT_SYMBOL[s]}</button>
           ))}
         </div>
-
-        {jokerEnabled && (
-          <button className="aip-key joker-btn" onClick={handleJoker}
-            disabled={phase !== "collecting" || slotsFull}>JOKER</button>
-        )}
 
         <div className="aip-edit">
           <button className="aip-key edit" onClick={backspace}
@@ -314,7 +346,7 @@ function AIPokerApp() {
             {confirmClear ? "Clear all?" : "Clear"}
           </button>
         </div>
-        <button className="aip-key reveal" onClick={doReveal}
+        <button className="aip-key reveal" onClick={onRevealTap}
           disabled={!revealValid || phase !== "collecting"}>Reveal</button>
       </section>
 
@@ -377,6 +409,7 @@ function AIPokerApp() {
               <button className="aip-x" onClick={() => setSetupOpen(false)}>Close</button>
             </div>
 
+            <div className="aip-setup-body">
             {setupNote && <div className="aip-note">{setupNote}</div>}
 
             <div className="aip-field">
@@ -422,11 +455,19 @@ function AIPokerApp() {
 
             <div className="aip-field row">
               <label>Joker button</label>
-              <Toggle on={jokerEnabled} set={setJokerEnabled} />
+              <Toggle on={jokerEnabled} set={setJokerEnabled} label="Joker button" />
+            </div>
+            <div className="aip-field row">
+              <label>Double-tap Reveal (one tap = lower card, two taps = higher)</label>
+              <Toggle on={doubleTap} set={setDoubleTap} label="Double-tap Reveal" />
+            </div>
+            <div className="aip-field row">
+              <label>Suit buttons in SHoCkeD order (♠ ♥ ♣ ♦)</label>
+              <Toggle on={suitOrder === "shocked"} set={(v) => setSuitOrder(v ? "shocked" : "chased")} label="SHoCkeD suit order" />
             </div>
             <div className="aip-field row">
               <label>Rehearsal diagnostics</label>
-              <Toggle on={diagnostics} set={setDiagnostics} />
+              <Toggle on={diagnostics} set={setDiagnostics} label="Rehearsal diagnostics" />
             </div>
 
             <div className="aip-field">
@@ -446,6 +487,7 @@ function AIPokerApp() {
             <p className="aip-setup-note">
               To open this later: tap A three times in a row (with no suit in between). · v{APP_VERSION}
             </p>
+            </div>
           </div>
         </div>
       )}
@@ -453,9 +495,10 @@ function AIPokerApp() {
   );
 }
 
-function Toggle({ on, set }: { on: boolean; set: (v: boolean) => void }) {
+function Toggle({ on, set, label }: { on: boolean; set: (v: boolean) => void; label?: string }) {
   return (
-    <button className={"aip-toggle" + (on ? " on" : "")} onClick={() => set(!on)} role="switch" aria-checked={on}>
+    <button className={"aip-toggle" + (on ? " on" : "")} onClick={() => set(!on)}
+      role="switch" aria-checked={on} aria-label={label}>
       <span className="aip-knob" />
     </button>
   );
@@ -476,6 +519,9 @@ function DiagBody({ entries, evalR }: { entries: Entry[]; evalR: EvalResult | nu
   }
   if (evalR.mode === "block" || evalR.mode === "force") {
     return <>{modeLine}<div className="aip-diag-row">Missing card → {formatFull(evalR.answer)}</div></>;
+  }
+  if (evalR.mode === "repeat-king") {
+    return <>{modeLine}<div className="aip-diag-row">{evalR.diag?.color} · {evalR.diag?.rankClass} → {formatFull(evalR.answer)}</div></>;
   }
   const d = evalR.diag ?? {};
   const labels = (d.sortedVisible ?? []).map((c, i) => `${c}=${i + 1}`).join("  ");

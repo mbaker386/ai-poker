@@ -12,6 +12,8 @@ const sample: Settings = {
   customName: "Test stack",
   forceConfigs: [["AC", "4H", "7S", "10D", "KC"], ["2C", "3D", "4S", "5H", "6C"]] as Card[][],
   jokerEnabled: false,
+  doubleTap: true,
+  suitOrder: "shocked",
   diagnostics: true,
 };
 
@@ -51,6 +53,21 @@ describe("backup codes", () => {
       expect(decoded.settings.customName).toBe("Test stack");
       expect(decoded.settings.forceConfigs).toEqual(sample.forceConfigs);
       expect(decoded.settings.jokerEnabled).toBe(false);
+      expect(decoded.settings.doubleTap).toBe(true);
+      expect(decoded.settings.suitOrder).toBe("shocked");
+    }
+  });
+  it("older codes without the new fields fall back to defaults", () => {
+    // A v1.0 code carried only s,n,c,f,j — no t/o.
+    const legacy = "AIP1." + btoa(JSON.stringify({ v: 1, s: "mnemonica", n: "X", c: null, f: "", j: true }))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const decoded = decodeSettings(legacy);
+    if ("settings" in decoded) {
+      expect(decoded.settings.stackId).toBe("mnemonica");
+      expect(decoded.settings.doubleTap).toBe(false);
+      expect(decoded.settings.suitOrder).toBe("chased");
+    } else {
+      throw new Error("decode failed");
     }
   });
   it("encodes defaults compactly", () => {

@@ -123,15 +123,59 @@ describe("persistence", () => {
     expect(btn.className).toContain("on");
   });
 
-  it("joker toggle persists", () => {
+  it("joker toggle persists and hides the JOKER key", () => {
     const first = render(<AIPoker />);
     tapRank("A"); tapRank("A"); tapRank("A");
-    const toggles = screen.getAllByRole("switch");
-    fireEvent.click(toggles[0]); // joker off
+    expect(screen.getByRole("button", { name: "JOKER" }).className).toContain("joker-rank");
+    fireEvent.click(screen.getByRole("switch", { name: "Joker button" })); // joker off
     first.unmount();
 
     render(<AIPoker />);
     expect(screen.queryByRole("button", { name: "JOKER" })).toBeNull();
+  });
+});
+
+describe("double-tap reveal", () => {
+  function openSetup() { tapRank("A"); tapRank("A"); tapRank("A"); }
+  it("double tap reveals the higher candidate", () => {
+    render(<AIPoker />);
+    openSetup();
+    fireEvent.click(screen.getByRole("switch", { name: "Double-tap Reveal" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    // AD,4H,4C,AS -> candidates {10H, KS}; double tap => higher = King of Spades
+    enterGroup(["AD", "4H", "4C", "AS"]);
+    const btn = screen.getByRole("button", { name: "Reveal" });
+    fireEvent.click(btn);
+    fireEvent.click(btn);
+    expect(screen.getByText(/King of Spades/)).toBeTruthy();
+  });
+});
+
+describe("repeat-King method", () => {
+  it("accepts a repeated fourth card and reveals a King", () => {
+    const { container } = render(<AIPoker />);
+    // AS,3H,6C,AS -> King of Clubs (black + minor); the 4th entry repeats AS.
+    enterGroup(["AS", "3H", "6C", "AS"]);
+    expect(container.querySelectorAll(".aip-slot.filled").length).toBe(4); // duplicate accepted
+    reveal();
+    expect(screen.getByText(/King of Clubs/)).toBeTruthy();
+  });
+  it("still blocks a duplicate that is not the fourth entry", () => {
+    render(<AIPoker />);
+    enterCard("AS");
+    enterCard("AS"); // second entry duplicate -> rejected
+    expect(screen.getByText(/already in/)).toBeTruthy();
+  });
+});
+
+describe("suit order", () => {
+  it("SHoCkeD toggle reorders the suit buttons to ♠ ♥ ♣ ♦", () => {
+    render(<AIPoker />);
+    tapRank("A"); tapRank("A"); tapRank("A");
+    fireEvent.click(screen.getByRole("switch", { name: "SHoCkeD suit order" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    const suits = screen.getAllByRole("button").filter((b) => b.className.includes("aip-key suit"));
+    expect(suits.map((b) => b.textContent)).toEqual(["♠", "♥", "♣", "♦"]);
   });
 });
 
@@ -161,6 +205,6 @@ describe("embedded self-tests", () => {
     render(<AIPoker />);
     tapRank("A"); tapRank("A"); tapRank("A");
     fireEvent.click(screen.getByRole("button", { name: "Run self-tests" }));
-    expect(screen.getByText(/14\/14 passed/)).toBeTruthy();
+    expect(screen.getByText(/15\/15 passed/)).toBeTruthy();
   });
 });

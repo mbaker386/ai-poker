@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { evaluateGroup, forceTextFrom, parseForceText, parseStackText } from "../src/logic";
-import { ARONSON, CHASED, FULL_DECK, MNEMONICA, PARTICLE, type Card, type Entry } from "../src/stacks";
+import { cardLess, decodeOrdinaryCandidates, evaluateGroup, forceTextFrom, parseForceText, parseStackText } from "../src/logic";
+import { ARONSON, CHASED, DEFAULT_FORCE, FULL_DECK, MNEMONICA, PARTICLE, SI_STEBBINS, type Card, type Entry } from "../src/stacks";
 
 const F: Card[][] = [["AC", "4H", "7S", "10D", "KC"]];
 const ev = (entries: Entry[], stack: Card[] = ARONSON, force: Card[][] = F) =>
@@ -8,12 +8,16 @@ const ev = (entries: Entry[], stack: Card[] = ARONSON, force: Card[][] = F) =>
 
 describe("stack validity", () => {
   const stacks: [string, Card[]][] = [
-    ["Aronson", ARONSON], ["Mnemonica", MNEMONICA], ["Particle", PARTICLE], ["CHaSeD", CHASED],
+    ["Aronson", ARONSON], ["Mnemonica", MNEMONICA], ["Particle", PARTICLE],
+    ["Si Stebbins", SI_STEBBINS], ["CHaSeD", CHASED],
   ];
   it.each(stacks)("%s is a permutation of the 52-card deck", (_name, s) => {
     expect(s).toHaveLength(52);
     expect(new Set(s).size).toBe(52);
     for (const c of s) expect(FULL_DECK).toContain(c);
+  });
+  it("Si Stebbins follows +3 / CHaSeD", () => {
+    expect(SI_STEBBINS.slice(0, 8)).toEqual(["AC", "4H", "7S", "10D", "KC", "3H", "6S", "9D"]);
   });
   it("Mnemonica spot checks", () => {
     expect(MNEMONICA[0]).toBe("4C");
@@ -52,8 +56,9 @@ describe("coded (Phase 1/2) decoding", () => {
     const r = ev(["AH", "9S", "KH", "10D"]);
     expect(r).toMatchObject({ ok: true, answer: "7H", alternate: null });
   });
-  it("rejects duplicate ordinary cards", () => {
-    expect(ev(["AS", "AS", "4H", "4C"]).ok).toBe(false);
+  it("rejects a group with only two distinct cards", () => {
+    // One repeat (three distinct) is now the repeat-King method; two distinct is invalid.
+    expect(ev(["AS", "AS", "4H", "4H"]).ok).toBe(false);
   });
 });
 
@@ -132,6 +137,97 @@ describe("force list", () => {
     const crafted = [...five, ...rest];
     const r = evaluateGroup(["AC", "4H", "7S", "10D"], crafted, F);
     expect(r).toMatchObject({ ok: true, mode: "force", answer: "KC" });
+  });
+});
+
+describe("default force list (v1.1 — four configs)", () => {
+  it("every default config resolves to its held-out fifth card", () => {
+    for (const config of DEFAULT_FORCE) {
+      for (let i = 0; i < 5; i++) {
+        const four = config.filter((_, j) => j !== i) as Card[];
+        const r = evaluateGroup(four, ARONSON, DEFAULT_FORCE);
+        expect(r).toMatchObject({ ok: true, mode: "force", answer: config[i] });
+      }
+    }
+  });
+  it("no two default configs share four cards (no ambiguous subset)", () => {
+    for (let a = 0; a < DEFAULT_FORCE.length; a++) {
+      for (let b = a + 1; b < DEFAULT_FORCE.length; b++) {
+        const shared = DEFAULT_FORCE[a].filter((c) => DEFAULT_FORCE[b].includes(c));
+        expect(shared.length).toBeLessThan(4);
+      }
+    }
+  });
+});
+
+describe("SHoCkeD encoding", () => {
+  it("first-card suit map differs: label 1 = ♣ (CHaSeD) vs ♠ (SHoCkeD)", () => {
+    // perm [1,2,3,4] -> pair A/7 on the label-1 suit
+    expect(decodeOrdinaryCandidates([1, 2, 3, 4], "chased")).toEqual(["AC", "7C"]);
+    expect(decodeOrdinaryCandidates([1, 2, 3, 4], "shocked")).toEqual(["AS", "7S"]);
+  });
+  it("labels 2 and 4 are ♥ and ♦ in both orders; label 3 swaps ♠↔♣", () => {
+    expect(decodeOrdinaryCandidates([2, 1, 3, 4], "chased")[0].slice(-1)).toBe("H");
+    expect(decodeOrdinaryCandidates([2, 1, 3, 4], "shocked")[0].slice(-1)).toBe("H");
+    expect(decodeOrdinaryCandidates([3, 1, 2, 4], "chased")[0].slice(-1)).toBe("S");
+    expect(decodeOrdinaryCandidates([3, 1, 2, 4], "shocked")[0].slice(-1)).toBe("C");
+  });
+  it("joker slot 3 names K♠ under CHaSeD, K♣ under SHoCkeD", () => {
+    const chased = evaluateGroup(["9S", "KD", "JOKER", "10D"], ARONSON, F, undefined, "chased");
+    const shocked = evaluateGroup(["9S", "KD", "JOKER", "10D"], ARONSON, F, undefined, "shocked");
+    expect(chased).toMatchObject({ ok: true, answer: "KS" });
+    expect(shocked).toMatchObject({ ok: true, answer: "KC" });
+  });
+});
+
+describe("repeat-King method (three distinct + one repeat)", () => {
+  // Aronson positions: AS=6 (A), 3H=7 (B), 6C=8 (C).
+  it.each([
+    [["AS", "3H", "6C", "AS"], "KC"], // A,B,C  black+minor
+    [["AS", "6C", "3H", "AS"], "KS"], // A,C,B  black+major
+    [["3H", "AS", "6C", "3H"], "KD"], // B,A,C  red+minor
+    [["3H", "6C", "AS", "3H"], "KH"], // B,C,A  red+major
+  ] as [string[], string][])("%j -> %s", (entries, king) => {
+    const r = evaluateGroup(entries as Card[], ARONSON, F);
+    expect(r).toMatchObject({ ok: true, mode: "repeat-king", answer: king, alternate: null });
+  });
+  it("the repeated card's identity does not matter (order of the three does)", () => {
+    for (const rep of ["AS", "3H", "6C"]) {
+      const r = evaluateGroup(["AS", "3H", "6C", rep] as Card[], ARONSON, F);
+      expect(r).toMatchObject({ ok: true, mode: "repeat-king", answer: "KC" });
+    }
+  });
+  it("first card = highest position is not a valid code -> invalid", () => {
+    const r = evaluateGroup(["6C", "AS", "3H", "6C"], ARONSON, F);
+    expect(r.ok).toBe(false);
+  });
+  it("is detected even when the three cards are consecutive in the stack", () => {
+    // AS,3H,6C are Aronson 6,7,8 — repeat shape wins over block detection.
+    const r = evaluateGroup(["AS", "3H", "6C", "AS"], ARONSON, F);
+    if (r.ok) expect(r.mode).toBe("repeat-king");
+  });
+  it("four distinct cards are NOT treated as repeat-King", () => {
+    const r = evaluateGroup(["AS", "3H", "6C", "9D"], ARONSON, F);
+    if (r.ok) expect(r.mode).not.toBe("repeat-king");
+  });
+});
+
+describe("double-tap selection (low / high)", () => {
+  it("cardLess orders by rank, then suit", () => {
+    expect(cardLess("10H", "KS")).toBe(true); // 10 < K
+    expect(cardLess("AC", "7C")).toBe(true);  // A < 7
+    expect(cardLess("KH", "KS")).toBe(true);  // rank tie, H before S
+  });
+  it("picks the lower / higher of the two coded candidates", () => {
+    // AD,4H,4C,AS on Aronson yields candidates {10H, KS}
+    const lo = evaluateGroup(["AD", "4H", "4C", "AS"], ARONSON, F, "low");
+    const hi = evaluateGroup(["AD", "4H", "4C", "AS"], ARONSON, F, "high");
+    expect(lo).toMatchObject({ ok: true, answer: "10H", alternate: "KS" });
+    expect(hi).toMatchObject({ ok: true, answer: "KS", alternate: "10H" });
+  });
+  it("leaves single-candidate results unchanged", () => {
+    const r = evaluateGroup(["AH", "9S", "KH", "10D"], ARONSON, F, "high");
+    expect(r).toMatchObject({ ok: true, answer: "7H", alternate: null });
   });
 });
 

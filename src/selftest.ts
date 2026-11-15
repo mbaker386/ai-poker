@@ -27,14 +27,16 @@ export function runSelfTests(): SelfTestResult {
   t("E", r.ok && r.mode === "joker" && r.answer === "KS");
   r = ev(["KD", "9S", "JOKER", "10D"]);
   t("F", !r.ok && r.error === "joker-order");
-  r = ev(["AS", "AS", "4H", "4C"]);
-  t("dup", !r.ok);
+  r = ev(["AS", "AS", "4H", "4H"]);
+  t("dup", !r.ok); // only two distinct cards -> invalid
   r = ev(["JH", "KH", "JC", "4D"]);
   t("block", r.ok && r.mode === "block" && r.answer === "10D");
   r = ev(["KH", "4D", "10D", "JC"]);
   t("ends", r.ok && r.mode === "block" && ["4H", "JH"].includes(r.answer));
   r = ev(["AC", "4H", "7S", "KC"]);
   t("force", r.ok && r.mode === "force" && r.answer === "10D");
+  r = ev(["AS", "3H", "6C", "AS"]);
+  t("repeat-king", r.ok && r.mode === "repeat-king" && r.answer === "KC");
 
   return { pass, fail, total: pass + fail, lines };
 }
