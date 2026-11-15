@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { cardLess, decodeOrdinaryCandidates, evaluateGroup, forceTextFrom, parseForceText, parseStackText } from "../src/logic";
-import { ARONSON, CHASED, DEFAULT_FORCE, FULL_DECK, MNEMONICA, PARTICLE, SI_STEBBINS, type Card, type Entry } from "../src/stacks";
+import { ARONSON, CHASED, DEFAULT_FORCE, FULL_DECK, MNEMONICA, NUMERICAL_SHOCKED, PARTICLE, SI_STEBBINS, SI_STEBBINS_SHOCKED, type Card, type Entry } from "../src/stacks";
 
 const F: Card[][] = [["AC", "4H", "7S", "10D", "KC"]];
 const ev = (entries: Entry[], stack: Card[] = ARONSON, force: Card[][] = F) =>
@@ -9,15 +9,22 @@ const ev = (entries: Entry[], stack: Card[] = ARONSON, force: Card[][] = F) =>
 describe("stack validity", () => {
   const stacks: [string, Card[]][] = [
     ["Aronson", ARONSON], ["Mnemonica", MNEMONICA], ["Particle", PARTICLE],
-    ["Si Stebbins", SI_STEBBINS], ["CHaSeD", CHASED],
+    ["Si Stebbins (CHaSeD)", SI_STEBBINS], ["Si Stebbins (SHoCkeD)", SI_STEBBINS_SHOCKED],
+    ["Numerical CHaSeD", CHASED], ["Numerical SHoCkeD", NUMERICAL_SHOCKED],
   ];
   it.each(stacks)("%s is a permutation of the 52-card deck", (_name, s) => {
     expect(s).toHaveLength(52);
     expect(new Set(s).size).toBe(52);
     for (const c of s) expect(FULL_DECK).toContain(c);
   });
-  it("Si Stebbins follows +3 / CHaSeD", () => {
+  it("Si Stebbins (CHaSeD) follows +3 / CHaSeD", () => {
     expect(SI_STEBBINS.slice(0, 8)).toEqual(["AC", "4H", "7S", "10D", "KC", "3H", "6S", "9D"]);
+  });
+  it("Si Stebbins (SHoCkeD) follows +3 / SHoCkeD", () => {
+    expect(SI_STEBBINS_SHOCKED.slice(0, 8)).toEqual(["AS", "4H", "7C", "10D", "KS", "3H", "6C", "9D"]);
+  });
+  it("Numerical SHoCkeD orders suits S,H,C,D within each rank", () => {
+    expect(NUMERICAL_SHOCKED.slice(0, 8)).toEqual(["AS", "AH", "AC", "AD", "2S", "2H", "2C", "2D"]);
   });
   it("Mnemonica spot checks", () => {
     expect(MNEMONICA[0]).toBe("4C");

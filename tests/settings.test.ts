@@ -12,8 +12,10 @@ const sample: Settings = {
   customName: "Test stack",
   forceConfigs: [["AC", "4H", "7S", "10D", "KC"], ["2C", "3D", "4S", "5H", "6C"]] as Card[][],
   jokerEnabled: false,
-  doubleTap: true,
+  revealMode: "twobutton",
   suitOrder: "shocked",
+  facialAnalysis: true,
+  facialLiveCamera: false,
   diagnostics: true,
 };
 
@@ -53,22 +55,31 @@ describe("backup codes", () => {
       expect(decoded.settings.customName).toBe("Test stack");
       expect(decoded.settings.forceConfigs).toEqual(sample.forceConfigs);
       expect(decoded.settings.jokerEnabled).toBe(false);
-      expect(decoded.settings.doubleTap).toBe(true);
+      expect(decoded.settings.revealMode).toBe("twobutton");
       expect(decoded.settings.suitOrder).toBe("shocked");
+      expect(decoded.settings.facialAnalysis).toBe(true);
+      expect(decoded.settings.facialLiveCamera).toBe(false);
     }
   });
   it("older codes without the new fields fall back to defaults", () => {
-    // A v1.0 code carried only s,n,c,f,j — no t/o.
+    // A v1.0 code carried only s,n,c,f,j — no r/o.
     const legacy = "AIP1." + btoa(JSON.stringify({ v: 1, s: "mnemonica", n: "X", c: null, f: "", j: true }))
       .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     const decoded = decodeSettings(legacy);
     if ("settings" in decoded) {
       expect(decoded.settings.stackId).toBe("mnemonica");
-      expect(decoded.settings.doubleTap).toBe(false);
+      expect(decoded.settings.revealMode).toBe("auto");
       expect(decoded.settings.suitOrder).toBe("chased");
     } else {
       throw new Error("decode failed");
     }
+  });
+  it("migrates a pre-v1.2 doubleTap code to revealMode", () => {
+    const legacy = "AIP1." + btoa(JSON.stringify({ v: 1, s: "aronson", n: "X", c: null, f: "", j: true, t: true, o: "chased" }))
+      .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const decoded = decodeSettings(legacy);
+    if ("settings" in decoded) expect(decoded.settings.revealMode).toBe("doubletap");
+    else throw new Error("decode failed");
   });
   it("encodes defaults compactly", () => {
     const code = encodeSettings(DEFAULT_SETTINGS);

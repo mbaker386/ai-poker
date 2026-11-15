@@ -10,14 +10,22 @@ import { DEFAULT_FORCE, STACKS, type Card, type SuitOrder } from "./stacks";
 
 export type { SuitOrder };
 
+// How the reveal is chosen when a group has two candidate hole cards:
+//   "auto"      — one Reveal key; the app chooses (spacing heuristic / coin).
+//   "doubletap" — one Reveal key; single tap = lower candidate, double = higher.
+//   "twobutton" — two keys: Enter = lower candidate, Reveal = higher.
+export type RevealMode = "auto" | "doubletap" | "twobutton";
+
 export interface Settings {
   stackId: string;               // one of STACKS ids, or "custom"
   customStack: Card[] | null;
   customName: string;
   forceConfigs: Card[][];
   jokerEnabled: boolean;
-  doubleTap: boolean;            // single tap = lower candidate, double tap = higher
+  revealMode: RevealMode;
   suitOrder: SuitOrder;          // suit-button order AND the coded suit encoding
+  facialAnalysis: boolean;       // show the (presentational) Facial Analysis button
+  facialLiveCamera: boolean;     // use the live front camera (else a fake scan)
   diagnostics: boolean;
 }
 
@@ -27,10 +35,14 @@ export const DEFAULT_SETTINGS: Settings = {
   customName: "Custom stack",
   forceConfigs: DEFAULT_FORCE,
   jokerEnabled: true,
-  doubleTap: false,
+  revealMode: "auto",
   suitOrder: "chased",
+  facialAnalysis: false,
+  facialLiveCamera: true,
   diagnostics: false,
 };
+
+const REVEAL_MODES: RevealMode[] = ["auto", "doubletap", "twobutton"];
 
 const STORAGE_KEY = "ai-poker:v1";
 
@@ -66,8 +78,14 @@ export function sanitizeSettings(raw: unknown): Settings {
     if ("configs" in parsed) s.forceConfigs = parsed.configs;
   }
   if (typeof o.jokerEnabled === "boolean") s.jokerEnabled = o.jokerEnabled;
-  if (typeof o.doubleTap === "boolean") s.doubleTap = o.doubleTap;
+  if (typeof o.revealMode === "string" && REVEAL_MODES.includes(o.revealMode as RevealMode)) {
+    s.revealMode = o.revealMode as RevealMode;
+  } else if (typeof o.doubleTap === "boolean") {
+    s.revealMode = o.doubleTap ? "doubletap" : "auto"; // migrate pre-v1.2 setting
+  }
   if (o.suitOrder === "chased" || o.suitOrder === "shocked") s.suitOrder = o.suitOrder;
+  if (typeof o.facialAnalysis === "boolean") s.facialAnalysis = o.facialAnalysis;
+  if (typeof o.facialLiveCamera === "boolean") s.facialLiveCamera = o.facialLiveCamera;
   if (typeof o.diagnostics === "boolean") s.diagnostics = o.diagnostics;
   return s;
 }
@@ -119,8 +137,10 @@ export function encodeSettings(s: Settings): string {
     c: s.customStack ? s.customStack.join(" ") : null,
     f: forceTextFrom(s.forceConfigs),
     j: s.jokerEnabled,
-    t: s.doubleTap,
+    r: s.revealMode,
     o: s.suitOrder,
+    fa: s.facialAnalysis,
+    fc: s.facialLiveCamera,
   };
   const bytes = new TextEncoder().encode(JSON.stringify(payload));
   return CODE_PREFIX + toBase64Url(bytes);
@@ -157,8 +177,11 @@ export function decodeSettings(code: string): { settings: Settings } | { error: 
     customName: payload.n,
     forceConfigs,
     jokerEnabled: payload.j,
-    doubleTap: payload.t,
+    revealMode: payload.r,   // v1.2+
+    doubleTap: payload.t,    // pre-v1.2 codes (migrated in sanitizeSettings)
     suitOrder: payload.o,
+    facialAnalysis: payload.fa,
+    facialLiveCamera: payload.fc,
   });
   return { settings };
 }

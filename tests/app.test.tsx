@@ -101,12 +101,21 @@ describe("hidden setup gesture", () => {
   it("stack switch takes effect immediately after Close", () => {
     render(<AIPoker />);
     tapRank("A"); tapRank("A"); tapRank("A");
-    fireEvent.click(screen.getByRole("button", { name: "Numerical-CHaSeD" }));
+    fireEvent.click(screen.getByRole("button", { name: "Numerical Order (CHaSeD)" }));
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     // CHaSeD wrap-around block 51,52,1,2 minus AC
     enterGroup(["KS", "KD", "AH", "AS"]);
     reveal();
     expect(screen.getByText(/Ace of Clubs/)).toBeTruthy();
+  });
+
+  it("choosing a SHoCkeD stack also sets the suit-button order", () => {
+    render(<AIPoker />);
+    tapRank("A"); tapRank("A"); tapRank("A");
+    fireEvent.click(screen.getByRole("button", { name: "Numerical Order (SHoCkeD)" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    const suits = screen.getAllByRole("button").filter((b) => b.className.includes("aip-key suit"));
+    expect(suits.map((b) => b.textContent)).toEqual(["♠", "♥", "♣", "♦"]);
   });
 });
 
@@ -135,12 +144,14 @@ describe("persistence", () => {
   });
 });
 
-describe("double-tap reveal", () => {
+describe("reveal keys", () => {
   function openSetup() { tapRank("A"); tapRank("A"); tapRank("A"); }
-  it("double tap reveals the higher candidate", () => {
+  const pickMode = (name: string) => fireEvent.click(screen.getByRole("radio", { name: "Reveal keys: " + name }));
+
+  it("double-tap mode: two taps reveal the higher candidate", () => {
     render(<AIPoker />);
     openSetup();
-    fireEvent.click(screen.getByRole("switch", { name: "Double-tap Reveal" }));
+    pickMode("Double-tap");
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     // AD,4H,4C,AS -> candidates {10H, KS}; double tap => higher = King of Spades
     enterGroup(["AD", "4H", "4C", "AS"]);
@@ -148,6 +159,38 @@ describe("double-tap reveal", () => {
     fireEvent.click(btn);
     fireEvent.click(btn);
     expect(screen.getByText(/King of Spades/)).toBeTruthy();
+  });
+
+  it("two-button mode: Enter shows the lower, Reveal shows the higher", () => {
+    render(<AIPoker />);
+    openSetup();
+    pickMode("Enter / Reveal");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    // AD,4H,4C,AS -> candidates {10H (lower), KS (higher)}
+    enterGroup(["AD", "4H", "4C", "AS"]);
+    expect(screen.getByRole("button", { name: "Enter" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Reveal" }));
+    expect(screen.getByText(/King of Spades/)).toBeTruthy();
+  });
+
+  it("two-button mode: Enter shows the lower candidate", () => {
+    render(<AIPoker />);
+    openSetup();
+    pickMode("Enter / Reveal");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    enterGroup(["AD", "4H", "4C", "AS"]);
+    fireEvent.click(screen.getByRole("button", { name: "Enter" }));
+    expect(screen.getByText(/Ten of Hearts/)).toBeTruthy();
+  });
+
+  it("two-button mode persists across a reload", () => {
+    const first = render(<AIPoker />);
+    openSetup();
+    pickMode("Enter / Reveal");
+    first.unmount();
+    render(<AIPoker />);
+    enterGroup(["AD", "4H", "4C", "AS"]);
+    expect(screen.getByRole("button", { name: "Enter" })).toBeTruthy();
   });
 });
 
@@ -176,6 +219,23 @@ describe("suit order", () => {
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     const suits = screen.getAllByRole("button").filter((b) => b.className.includes("aip-key suit"));
     expect(suits.map((b) => b.textContent)).toEqual(["♠", "♥", "♣", "♦"]);
+  });
+});
+
+describe("facial analysis (presentation)", () => {
+  it("is hidden by default", () => {
+    render(<AIPoker />);
+    expect(screen.queryByRole("button", { name: /Facial Analysis/ })).toBeNull();
+  });
+  it("appears when enabled and opens/closes the scan overlay (fake fallback in jsdom)", () => {
+    render(<AIPoker />);
+    tapRank("A"); tapRank("A"); tapRank("A");
+    fireEvent.click(screen.getByRole("switch", { name: "Facial Analysis button" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByRole("button", { name: /Facial Analysis/ }));
+    expect(screen.getByRole("dialog", { name: "Facial analysis" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /Cancel|Done/ }));
+    expect(screen.queryByRole("dialog", { name: "Facial analysis" })).toBeNull();
   });
 });
 

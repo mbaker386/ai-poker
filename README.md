@@ -76,14 +76,17 @@ position = 1). Enter them in the order that encodes the target:
   | high      | low       | 5 / J   |
   | high      | mid       | 6 / Q   |
 
-- A coded group yields *two* candidate cards (a pair). By default the app
-  displays one of them, chosen by a spacing heuristic on stack positions — it
-  prefers the candidate whose position fills the largest gap among the four
-  visible cards most evenly — and stores the other; **No** reveals the stored
-  one. With **Double-tap Reveal** enabled (setup screen), the heuristic is
-  bypassed: one tap of **Reveal** shows the lower of the two candidates (by
-  rank, then suit), a double tap shows the higher, and the other is stored for
-  **No**.
+- A coded group yields *two* candidate cards (a pair). How the app picks which
+  to show is set by **Reveal keys** (setup screen):
+  - **App chooses** (default) — a spacing heuristic on stack positions picks
+    the candidate whose position fills the largest gap among the four visible
+    cards most evenly, and stores the other; **No** reveals the stored one.
+  - **Double-tap** — the heuristic is bypassed: one tap of **Reveal** shows the
+    lower of the two candidates (by rank, then suit), a double tap shows the
+    higher, and the other is stored for **No**.
+  - **Enter / Reveal** — two side-by-side keys instead of one (reviving Al
+    Stanger's ENTER): **Enter** shows the lower candidate, **Reveal** the
+    higher. Same low/high choice as double-tap, made explicit.
 - **Kings** are reached by the Simple King Rule: to name a King, encode a card
   that is *already visible on the table*; the machine then substitutes the
   King whose suit-order index matches that card's label (CHaSeD: 1 → K♣, 2 →
@@ -116,9 +119,12 @@ Tap **A three times in a row** (no suit in between). Entering a real Ace
 (A then a suit) never triggers it. Inside:
 
 - **Reference stack** — Aronson (default), Mnemonica, Particle, Si Stebbins
-  (A♣ 4♥ 7♠ 10♦ K♣ 3♥ …, +3 and CHaSeD), Numerical-CHaSeD
-  (A♣ A♥ A♠ A♦ 2♣ … K♠ K♦), or a pasted custom stack. Selection takes effect
-  immediately; **Close** is enough.
+  in **(CHaSeD)** (A♣ 4♥ 7♠ 10♦ K♣ 3♥ …) or **(SHoCkeD)** (A♠ 4♥ 7♣ 10♦ K♠ …)
+  form, Numerical Order in **(CHaSeD)** (A♣ A♥ A♠ A♦ 2♣ … K♠ K♦) or
+  **(SHoCkeD)** (A♠ A♥ A♣ A♦ 2♠ … K♣ K♦) form, or a pasted custom stack.
+  Selection takes effect immediately; **Close** is enough. Choosing one of the
+  CHaSeD/SHoCkeD stack variants also sets **Suit order** (below) to match, so
+  the way you sort and the way the app reads suits always agree.
 - **Custom stack** — paste 52 cards in compact notation (`AS, KH, 10D, 2C …`
   or `TD` for ten), any separators. Validated as a true permutation.
 - **Force list** — one five-card configuration per line, editable, clearable.
@@ -127,11 +133,22 @@ Tap **A three times in a row** (no suit in between). Entering a real Ace
   like `AIP1.eyJ2IjoxLCJz…`.
 - **Joker button** on/off — the **JOKER** key sits on the keypad to the right
   of **K** (under the 9 and 10); turning it off removes it entirely.
-- **Double-tap Reveal** on/off — see the coded-order note above.
+- **Reveal keys** — App chooses (default), Double-tap, or Enter / Reveal; see
+  the coded-order note above.
 - **Suit order** — CHaSeD (default, ♣ ♥ ♠ ♦) or SHoCkeD (♠ ♥ ♣ ♦). This sets
   **both** the order of the suit keys and the coded suit encoding (the first-
   entry → suit map, the King rule, and the Joker slot all follow it). The
-  repeat-King method above is unaffected.
+  CHaSeD/SHoCkeD stack variants set this for you; the repeat-King method above
+  is unaffected either way.
+- **Facial Analysis button** — adds a **Facial Analysis** button to the main
+  screen. It is pure presentation: tapping it opens a full-screen "AI face
+  scan" (the live front camera with a scanning overlay, or a fake scan if the
+  camera is off or unavailable), runs an analysis animation, and announces
+  completion. It computes nothing and does not affect the trick; the camera is
+  display-only (never recorded or sent anywhere) and is released when the scan
+  closes. A sub-option, **Use live camera**, turns the real camera off for a
+  pure fake scan (no permission prompt). Works on iPhone and Android; with the
+  live camera, the first use shows the usual one-time camera-permission prompt.
 - **Rehearsal diagnostics** (a clearly-labeled panel showing the detected mode
   and decode — never enable in performance), **Reset performance** (clears the
   current group and restarts the correction rotation), and **Run self-tests**.

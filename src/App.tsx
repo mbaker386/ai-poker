@@ -3,9 +3,10 @@ import {
   evaluateGroup, formatFull, isRed, parseCard, parseForceText, parseStackText,
   forceTextFrom, type EvalResult,
 } from "./logic";
+import { FacialAnalysis } from "./FacialAnalysis";
 import { runSelfTests, type SelfTestResult } from "./selftest";
-import { decodeSettings, encodeSettings, loadSettings, saveSettings, type Settings } from "./settings";
-import { ARONSON, RANKS, STACKS, SUITS, type Card, type Entry } from "./stacks";
+import { decodeSettings, encodeSettings, loadSettings, saveSettings, type RevealMode, type Settings } from "./settings";
+import { ARONSON, RANKS, STACKS, SUITS, type BuiltInStack, type Card, type Entry, type SuitOrder } from "./stacks";
 import { version as APP_VERSION } from "../package.json";
 
 /* ---------------- audience-facing copy ---------------- */
@@ -52,8 +53,11 @@ function AIPokerApp() {
   const [customName, setCustomName] = useState(init.customName);
   const [forceConfigs, setForceConfigs] = useState<Card[][]>(init.forceConfigs);
   const [jokerEnabled, setJokerEnabled] = useState(init.jokerEnabled);
-  const [doubleTap, setDoubleTap] = useState(init.doubleTap);
-  const [suitOrder, setSuitOrder] = useState(init.suitOrder);
+  const [revealMode, setRevealMode] = useState<RevealMode>(init.revealMode);
+  const [suitOrder, setSuitOrder] = useState<SuitOrder>(init.suitOrder);
+  const [facialAnalysis, setFacialAnalysis] = useState(init.facialAnalysis);
+  const [facialLiveCamera, setFacialLiveCamera] = useState(init.facialLiveCamera);
+  const [facialOpen, setFacialOpen] = useState(false);
   const [diagnostics, setDiagnostics] = useState(init.diagnostics);
 
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -86,13 +90,20 @@ function AIPokerApp() {
   const activeStack = builtIn ? builtIn.cards : (customStack || ARONSON);
   const activeStackName = builtIn ? builtIn.name : customName;
 
+  // Choosing a built-in stack also sets the suit order when that stack carries
+  // one (the Numerical and Si Stebbins variants), so sorting and encoding agree.
+  const selectStack = (s: BuiltInStack) => {
+    setStackId(s.id);
+    if (s.suitOrder) setSuitOrder(s.suitOrder);
+  };
+
   const currentSettings = (): Settings =>
-    ({ stackId, customStack, customName, forceConfigs, jokerEnabled, doubleTap, suitOrder, diagnostics });
+    ({ stackId, customStack, customName, forceConfigs, jokerEnabled, revealMode, suitOrder, facialAnalysis, facialLiveCamera, diagnostics });
 
   // Persist settings whenever they change.
   useEffect(() => {
-    saveSettings({ stackId, customStack, customName, forceConfigs, jokerEnabled, doubleTap, suitOrder, diagnostics });
-  }, [stackId, customStack, customName, forceConfigs, jokerEnabled, doubleTap, suitOrder, diagnostics]);
+    saveSettings({ stackId, customStack, customName, forceConfigs, jokerEnabled, revealMode, suitOrder, facialAnalysis, facialLiveCamera, diagnostics });
+  }, [stackId, customStack, customName, forceConfigs, jokerEnabled, revealMode, suitOrder, facialAnalysis, facialLiveCamera, diagnostics]);
 
   const flash = useCallback((text: string) => {
     setMessage(text);
@@ -191,11 +202,11 @@ function AIPokerApp() {
     }
     setResult(r); setPhase("reveal");
   };
-  // Double-tap feature: one tap reveals the lower candidate, two the higher.
-  // When off, a tap reveals immediately with the estimation heuristic.
+  // "doubletap" reveal mode: one tap reveals the lower candidate, two the higher.
+  // "auto" mode reveals immediately with the estimation heuristic.
   const onRevealTap = () => {
     if (phase !== "collecting" || !revealValid) return;
-    if (!doubleTap) { doReveal(); return; }
+    if (revealMode !== "doubletap") { doReveal(); return; }
     if (revealTimer.current) {
       clearTimeout(revealTimer.current);
       revealTimer.current = null;
@@ -257,8 +268,10 @@ function AIPokerApp() {
     setCustomName(s.customName);
     setForceConfigs(s.forceConfigs);
     setJokerEnabled(s.jokerEnabled);
-    setDoubleTap(s.doubleTap);
+    setRevealMode(s.revealMode);
     setSuitOrder(s.suitOrder);
+    setFacialAnalysis(s.facialAnalysis);
+    setFacialLiveCamera(s.facialLiveCamera);
     setCustomDraft(s.customStack?.join(" ") ?? "");
     setForceDraft(forceTextFrom(s.forceConfigs));
     setImportError(null); setImportDraft("");
@@ -318,6 +331,12 @@ function AIPokerApp() {
             : <div className="aip-msg-spacer" />)}
       </div>
 
+      {facialAnalysis && phase === "collecting" && (
+        <button className="aip-facial-btn" onClick={() => setFacialOpen(true)}>
+          <span className="aip-facial-ico" aria-hidden>⌖</span> Facial Analysis
+        </button>
+      )}
+
       {/* ---------- keypad ---------- */}
       <section className="aip-pad">
         <div className="aip-ranks">
@@ -346,8 +365,17 @@ function AIPokerApp() {
             {confirmClear ? "Clear all?" : "Clear"}
           </button>
         </div>
-        <button className="aip-key reveal" onClick={onRevealTap}
-          disabled={!revealValid || phase !== "collecting"}>Reveal</button>
+        {revealMode === "twobutton" ? (
+          <div className="aip-reveal-pair">
+            <button className="aip-key reveal" onClick={() => doReveal("low")}
+              disabled={!revealValid || phase !== "collecting"}>Enter</button>
+            <button className="aip-key reveal" onClick={() => doReveal("high")}
+              disabled={!revealValid || phase !== "collecting"}>Reveal</button>
+          </div>
+        ) : (
+          <button className="aip-key reveal" onClick={onRevealTap}
+            disabled={!revealValid || phase !== "collecting"}>Reveal</button>
+        )}
       </section>
 
       {/* ---------- rehearsal diagnostics ---------- */}
@@ -400,6 +428,11 @@ function AIPokerApp() {
         </div>
       )}
 
+      {/* ---------- facial analysis (presentation) ---------- */}
+      {facialOpen && (
+        <FacialAnalysis liveCamera={facialLiveCamera} onClose={() => setFacialOpen(false)} />
+      )}
+
       {/* ---------- hidden setup ---------- */}
       {setupOpen && (
         <div className="aip-setup" role="dialog" aria-modal>
@@ -417,7 +450,7 @@ function AIPokerApp() {
               <div className="aip-seg">
                 {STACKS.map((s) => (
                   <button key={s.id} className={"aip-segbtn" + (stackId === s.id ? " on" : "")}
-                    onClick={() => setStackId(s.id)}>{s.name}</button>
+                    onClick={() => selectStack(s)}>{s.name}</button>
                 ))}
                 <button className={"aip-segbtn" + (stackId === "custom" ? " on" : "")}
                   disabled={!customStack} onClick={() => setStackId("custom")}>
@@ -457,14 +490,34 @@ function AIPokerApp() {
               <label>Joker button</label>
               <Toggle on={jokerEnabled} set={setJokerEnabled} label="Joker button" />
             </div>
-            <div className="aip-field row">
-              <label>Double-tap Reveal (one tap = lower card, two taps = higher)</label>
-              <Toggle on={doubleTap} set={setDoubleTap} label="Double-tap Reveal" />
+            <div className="aip-field">
+              <label>Reveal keys — who chooses between two possible cards</label>
+              <div className="aip-seg">
+                {([
+                  ["auto", "App chooses"],
+                  ["doubletap", "Double-tap"],
+                  ["twobutton", "Enter / Reveal"],
+                ] as [RevealMode, string][]).map(([mode, labelText]) => (
+                  <button key={mode} className={"aip-segbtn" + (revealMode === mode ? " on" : "")}
+                    role="radio" aria-checked={revealMode === mode} aria-label={"Reveal keys: " + labelText}
+                    onClick={() => setRevealMode(mode)}>{labelText}</button>
+                ))}
+              </div>
             </div>
             <div className="aip-field row">
               <label>Suit buttons in SHoCkeD order (♠ ♥ ♣ ♦)</label>
               <Toggle on={suitOrder === "shocked"} set={(v) => setSuitOrder(v ? "shocked" : "chased")} label="SHoCkeD suit order" />
             </div>
+            <div className="aip-field row">
+              <label>Facial Analysis button (presentation only)</label>
+              <Toggle on={facialAnalysis} set={setFacialAnalysis} label="Facial Analysis button" />
+            </div>
+            {facialAnalysis && (
+              <div className="aip-field row">
+                <label>Use live camera (falls back to a scan animation)</label>
+                <Toggle on={facialLiveCamera} set={setFacialLiveCamera} label="Facial Analysis live camera" />
+              </div>
+            )}
             <div className="aip-field row">
               <label>Rehearsal diagnostics</label>
               <Toggle on={diagnostics} set={setDiagnostics} label="Rehearsal diagnostics" />

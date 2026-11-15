@@ -42,13 +42,16 @@ export const PARTICLE: Card[] = [
   "KD", "AC",
 ];
 
-export const buildChased = (): Card[] =>
-  RANKS.flatMap((r) => SUITS.map((s) => `${r}${s}` as Card));
+// Numerical (value-then-suit) order, with the suits within each rank in the
+// chosen order. CHaSeD -> AC,AH,AS,AD,2C,…  SHoCkeD -> AS,AH,AC,AD,2S,…
+export const buildNumerical = (order: SuitOrder = "chased"): Card[] =>
+  RANKS.flatMap((r) => SUIT_SEQ[order].map((s) => `${r}${s}` as Card));
+export const buildChased = (): Card[] => buildNumerical("chased");
 
-// Si Stebbins: start at A♣, add 3 to the rank each step (A=1 … K=13, mod 13),
-// and cycle the suits C, H, S, D. Produces AC, 4H, 7S, 10D, KC, 3H, 6S, 9D, …
-export const buildSiStebbins = (): Card[] => {
-  const suitCycle: Suit[] = ["C", "H", "S", "D"];
+// Si Stebbins: add 3 to the rank each step (A=1 … K=13, mod 13) and cycle the
+// suits in the chosen order. CHaSeD -> AC,4H,7S,10D,KC,…  SHoCkeD -> AS,4H,7C,10D,KS,…
+export const buildSiStebbins = (order: SuitOrder = "chased"): Card[] => {
+  const suitCycle = SUIT_SEQ[order];
   const out: Card[] = [];
   let rankIdx = 0; // 0-based into RANKS: 0 = A … 12 = K
   for (let i = 0; i < 52; i++) {
@@ -58,22 +61,29 @@ export const buildSiStebbins = (): Card[] => {
   return out;
 };
 
-export const CHASED: Card[] = buildChased();
-export const SI_STEBBINS: Card[] = buildSiStebbins();
-export const FULL_DECK: Card[] = buildChased();
+export const CHASED: Card[] = buildNumerical("chased");
+export const NUMERICAL_SHOCKED: Card[] = buildNumerical("shocked");
+export const SI_STEBBINS: Card[] = buildSiStebbins("chased");
+export const SI_STEBBINS_SHOCKED: Card[] = buildSiStebbins("shocked");
+export const FULL_DECK: Card[] = CHASED;
 
 export interface BuiltInStack {
   id: string;
   name: string;
   cards: Card[];
+  // If set, choosing this stack also sets the app's suit order to match, so the
+  // way you sort and the way the app reads suits always agree.
+  suitOrder?: SuitOrder;
 }
 
 export const STACKS: BuiltInStack[] = [
   { id: "aronson", name: "Aronson", cards: ARONSON },
   { id: "mnemonica", name: "Mnemonica", cards: MNEMONICA },
   { id: "particle", name: "Particle", cards: PARTICLE },
-  { id: "sistebbins", name: "Si Stebbins", cards: SI_STEBBINS },
-  { id: "chased", name: "Numerical-CHaSeD", cards: CHASED },
+  { id: "sistebbins", name: "Si Stebbins (CHaSeD)", cards: SI_STEBBINS, suitOrder: "chased" },
+  { id: "sistebbins-shocked", name: "Si Stebbins (SHoCkeD)", cards: SI_STEBBINS_SHOCKED, suitOrder: "shocked" },
+  { id: "chased", name: "Numerical Order (CHaSeD)", cards: CHASED, suitOrder: "chased" },
+  { id: "numerical-shocked", name: "Numerical Order (SHoCkeD)", cards: NUMERICAL_SHOCKED, suitOrder: "shocked" },
 ];
 
 export const DEFAULT_FORCE: Card[][] = [
