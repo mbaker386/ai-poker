@@ -18,41 +18,47 @@ const STATUS = [
 
 export function FacialAnalysis({ liveCamera, onClose }: { liveCamera: boolean; onClose: () => void }) {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const [usingCamera, setUsingCamera] = useState(false);
+  const [stream, setStream] = useState<MediaStream | null>(null);
   const [progress, setProgress] = useState(0);
   const [statusIdx, setStatusIdx] = useState(0);
   const done = progress >= 100;
+  const usingCamera = stream !== null;
 
-  // Acquire (and reliably release) the front camera.
+  // Acquire the front camera (and reliably release it on close).
   useEffect(() => {
+    if (!liveCamera) return;
     let cancelled = false;
-    async function start() {
-      if (!liveCamera) return;
+    let acquired: MediaStream | null = null;
+    (async () => {
       try {
         const md = navigator.mediaDevices;
         if (!md || !md.getUserMedia) return; // unsupported -> fake fallback
-        const stream = await md.getUserMedia({ video: { facingMode: "user" }, audio: false });
-        if (cancelled) { stream.getTracks().forEach((t) => t.stop()); return; }
-        streamRef.current = stream;
-        setUsingCamera(true);
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          try { await videoRef.current.play(); } catch { /* autoplay handles it */ }
-        }
+        const s = await md.getUserMedia({ video: { facingMode: "user" }, audio: false });
+        if (cancelled) { s.getTracks().forEach((t) => t.stop()); return; }
+        acquired = s;
+        setStream(s); // triggers the render that mounts <video>; the effect below attaches it
       } catch {
-        setUsingCamera(false); // permission denied / no camera -> fake fallback
+        /* permission denied / no camera -> fake fallback */
       }
-    }
-    start();
+    })();
     return () => {
       cancelled = true;
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((t) => t.stop());
-        streamRef.current = null;
-      }
+      if (acquired) acquired.getTracks().forEach((t) => t.stop());
     };
   }, [liveCamera]);
+
+  // Attach the stream only once the <video> element is actually in the DOM.
+  // (Setting srcObject in the acquire callback above would race the render that
+  // creates the element, so the live feed never appeared.)
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !stream) return;
+    v.srcObject = stream;
+    v.muted = true; // iOS honors the property, not just the attribute, for autoplay
+    const p = v.play();
+    if (p && typeof p.catch === "function") p.catch(() => { /* autoPlay will cover it */ });
+    return () => { v.srcObject = null; };
+  }, [stream]);
 
   // Progress fills to 100% over ~4.5s, then holds at "complete".
   useEffect(() => {
